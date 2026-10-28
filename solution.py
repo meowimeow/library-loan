@@ -13,7 +13,7 @@ def _valid_day(day):
 class LibraryLoan:
     def __init__(self):
         self._loans = {}      # book_id -> (name, 빌린 날)
-        self._ban_until = {}  # name -> 대출 정지의 마지막 날(포함)
+        self._bans = {}       # name -> [(정지 시작일, 정지 마지막 날)] (양 끝 포함)
 
     def borrow(self, book_id, name, day):
         if not isinstance(book_id, str) or book_id not in BOOKS:
@@ -27,7 +27,8 @@ class LibraryLoan:
             return False
         if any(day > d + LOAN_DAYS for _, d in mine):
             return False
-        if day <= self._ban_until.get(name, 0):
+        # 날짜 순서를 검사하지 않으므로, 정지 기간 "안"에 드는 날만 막는다.
+        if any(start <= day <= end for start, end in self._bans.get(name, [])):
             return False
         self._loans[book_id] = (name, day)
         return True
@@ -46,9 +47,8 @@ class LibraryLoan:
         late = max(0, day - (borrowed + LOAN_DAYS))
         del self._loans[book_id]
         if late > 0:
-            end = day + late - 1
-            if end > self._ban_until.get(name, 0):
-                self._ban_until[name] = end
+            # 겹치는 기간은 더하지 않는다: 각 기간을 그대로 두고 "어느 기간에라도 들면 정지"로 본다.
+            self._bans.setdefault(name, []).append((day, day + late - 1))
         return late
 
     def get_loans(self, name):
