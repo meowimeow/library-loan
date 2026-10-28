@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도서관 대출 창구</title>
+<style>
+  :root { --paper:#f4efe4; --ink:#1f1d1a; --line:#cfc6b2; --ok:#1f6b45; --no:#b3261e; --accent:#2c3e50; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 "Noto Serif KR","Apple SD Gothic Neo",serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:1.5rem; margin:8px 0 2px; letter-spacing:-.02em; }
+  .sub { color:#6b6558; font-size:.875rem; margin:0 0 16px; }
+  #status { padding:8px 12px; border:1px dashed var(--line); font-size:.875rem; margin-bottom:16px; }
+  section { border-top:2px solid var(--ink); padding:14px 0 18px; }
+  h2 { font-size:1rem; margin:0 0 10px; }
+  .row { display:grid; grid-template-columns:1fr 1fr 90px; gap:8px; }
+  .row.one { grid-template-columns:1fr; }
+  input { width:100%; padding:10px; font:inherit; border:1px solid var(--ink); background:#fffdf8; border-radius:0; }
+  button { margin-top:10px; width:100%; padding:11px; font:inherit; font-weight:700; background:var(--accent); color:#fff; border:0; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:wait; }
+  .result { margin-top:10px; padding:12px; font-weight:700; font-size:1.125rem; display:none; border-left:6px solid; background:#fffdf8; }
+  .result.ok { display:block; color:var(--ok); border-color:var(--ok); }
+  .result.fail { display:block; color:var(--no); border-color:var(--no); font-size:1.375rem; }
+  .result ul { margin:6px 0 0; padding-left:20px; font-weight:400; color:var(--ink); }
+  @media (max-width:420px){ .row{ grid-template-columns:1fr 1fr; } .row input:last-child{ grid-column:1 / -1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>도서관 대출 창구</h1>
+  <p class="sub">책 B001 ~ B005 · 대출 기간 14일 · 1인 3권</p>
+  <div id="status">Python 불러오는 중… (처음엔 몇 초 걸려요)</div>
+
+  <section>
+    <h2>대출</h2>
+    <div class="row">
+      <input id="b-book" placeholder="책 번호" autocapitalize="characters">
+      <input id="b-name" placeholder="이름">
+      <input id="b-day" placeholder="며칠째" inputmode="decimal">
+    </div>
+    <button id="b-go" disabled>대출하기</button>
+    <div id="b-out" class="result"></div>
+  </section>
+
+  <section>
+    <h2>반납</h2>
+    <div class="row">
+      <input id="r-book" placeholder="책 번호" autocapitalize="characters">
+      <input id="r-name" placeholder="이름">
+      <input id="r-day" placeholder="며칠째" inputmode="decimal">
+    </div>
+    <button id="r-go" disabled>반납하기</button>
+    <div id="r-out" class="result"></div>
+  </section>
+
+  <section>
+    <h2>대출 목록</h2>
+    <div class="row one"><input id="l-name" placeholder="이름"></div>
+    <button id="l-go" disabled>목록 보기</button>
+    <div id="l-out" class="result"></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+let lib = null;
+const $ = id => document.getElementById(id);
+
+// 입력 문자열 → 숫자. 비었거나 숫자가 아니면 NaN(= solution.py가 거절).
+function num(s) { s = s.trim(); return s === "" ? NaN : Number(s); }
+
+function show(el, kind, html) { el.className = "result " + kind; el.innerHTML = html; }
+
+async function init() {
+  try {
+    const py = await loadPyodide();
+    const code = await (await fetch("solution.py?v=" + Date.now())).text();  // solution.py를 그대로 사용
+    py.runPython(code + "\nlib = LibraryLoan()");
+    lib = py.globals.get("lib");
+    $("status").textContent = "준비 완료";
+    for (const id of ["b-go", "r-go", "l-go"]) $(id).disabled = false;
+  } catch (e) {
+    $("status").textContent = "불러오기 실패: " + e.message + " (새로고침 해보세요)";
+  }
+}
+
+$("b-go").onclick = () => {
+  const ok = lib.borrow($("b-book").value.trim(), $("b-name").value.trim(), num($("b-day").value));
+  show($("b-out"), ok ? "ok" : "fail", ok ? "대출 성공" : "실패");
+};
+
+$("r-go").onclick = () => {
+  const late = lib.return_book($("r-book").value.trim(), $("r-name").value.trim(), num($("r-day").value));
+  if (late === -1) show($("r-out"), "fail", "실패");
+  else show($("r-out"), "ok", "반납 성공 · 연체 " + late + "일");
+};
+
+$("l-go").onclick = () => {
+  const proxy = lib.get_loans($("l-name").value.trim());
+  const items = proxy.toJs(); proxy.destroy();
+  if (!items.length) { show($("l-out"), "ok", "빌린 책 없음"); return; }
+  show($("l-out"), "ok", "<ul>" + items.map(t => `<li>${t[0]} (${t[1]}일째까지)</li>`).join("") + "</ul>");
+};
+
+init();
+</script>
+</body>
+</html>
